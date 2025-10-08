@@ -1,0 +1,38 @@
+| table_name      | column_name       | data_type                |
+| --------------- | ----------------- | ------------------------ |
+| categories      | id                | integer                  |
+| categories      | name              | text                     |
+| profiles        | id                | uuid                     |
+| profiles        | username          | text                     |
+| profiles        | full_name         | text                     |
+| profiles        | avatar_url        | text                     |
+| profiles        | created_at        | timestamp with time zone |
+| profiles        | updated_at        | timestamp with time zone |
+| profiles        | is_public_profile | boolean                  |
+| profiles        | email             | text                     |
+| recipes         | id                | uuid                     |
+| recipes         | title             | text                     |
+| recipes         | image_url         | text                     |
+| recipes         | ingredients       | text                     |
+| recipes         | steps             | text                     |
+| recipes         | is_public         | boolean                  |
+| recipes         | created_at        | timestamp with time zone |
+| recipes         | updated_at        | timestamp with time zone |
+| recipes         | category          | text                     |
+| recipes         | category_id       | integer                  |
+| saved_recipes   | id                | uuid                     |
+| saved_recipes   | user_id           | uuid                     |
+| saved_recipes   | recipe_id         | uuid                     |
+| saved_recipes   | saved_at          | timestamp with time zone |
+| saved_recipes   | notes             | text                     |
+| saved_recipes   | category          | text                     |
+| user_recipes    | id                | uuid                     |
+| user_recipes    | user_id           | uuid                     |
+| user_recipes    | title             | text                     |
+| user_recipes    | image_url         | text                     |
+| user_recipes    | ingredients       | ARRAY                    |
+| user_recipes    | steps             | ARRAY                    |
+| user_recipes    | created_at        | timestamp with time zone |
+| user_recipes    | updated_at        | timestamp with time zone |
+| user_recipes    | category          | text                     |
+| user_recipes    | category_id       | integer                  |
