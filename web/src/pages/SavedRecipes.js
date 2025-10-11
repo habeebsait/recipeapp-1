@@ -12,8 +12,11 @@ function SavedRecipes() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [unsaveLoading, setUnsaveLoading] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState('All');
   
   const navigate = useNavigate();
+
+  const categories = ['All', 'Breakfast', 'Dinner', 'Dessert'];
 
   useEffect(() => {
     async function loadUserAndSavedRecipes() {
@@ -40,37 +43,97 @@ function SavedRecipes() {
           setProfile(userProfile);
         }
 
-        // Load saved recipes
+        // Fetch saved recipes (both from recipes and user_recipes tables)
         const { data: savedData, error: savedError } = await supabase
           .from('saved_recipes')
           .select(`
             id,
-            created_at,
-            user_recipes (
+            recipe_id,
+            user_recipe_id,
+            saved_at,
+            category
+          `)
+          .eq('user_id', currentUser.id)
+          .order('saved_at', { ascending: false });
+
+        if (savedError) throw savedError;
+
+        if (!savedData || savedData.length === 0) {
+          setSavedRecipes([]);
+          return;
+        }
+
+        // Separate public recipes and user recipes
+        const publicRecipeIds = savedData.filter(s => s.recipe_id).map(s => s.recipe_id);
+        const userRecipeIds = savedData.filter(s => s.user_recipe_id).map(s => s.user_recipe_id);
+
+        // Fetch public recipes
+        let publicRecipes = [];
+        if (publicRecipeIds.length > 0) {
+          const { data: publicRecipesData, error: publicError } = await supabase
+            .from('recipes')
+            .select('id, title, category, image_url, ingredients, steps, created_at')
+            .in('id', publicRecipeIds);
+          
+          if (!publicError) {
+            publicRecipes = publicRecipesData || [];
+          }
+        }
+
+        // Fetch user recipes with profiles
+        let userRecipes = [];
+        if (userRecipeIds.length > 0) {
+          const { data: userRecipesData, error: userError } = await supabase
+            .from('user_recipes')
+            .select(`
               id,
               title,
               category,
+              image_url,
               ingredients,
               steps,
-              image_url,
               created_at,
               user_id,
-              profiles!user_recipes_user_id_fkey (
+              profiles (
                 username,
                 full_name
               )
-            )
-          `)
-          .eq('user_id', currentUser.id)
-          .order('created_at', { ascending: false });
-
-        if (savedError) {
-          throw savedError;
+            `)
+            .in('id', userRecipeIds);
+          
+          if (!userError) {
+            userRecipes = userRecipesData || [];
+          }
         }
 
-        // Filter out any null recipes (in case a recipe was deleted)
-        const validSavedRecipes = (savedData || []).filter(item => item.user_recipes !== null);
-        setSavedRecipes(validSavedRecipes);
+        // Create lookup maps
+        const publicRecipeMap = new Map(publicRecipes.map(r => [r.id, r]));
+        const userRecipeMap = new Map(userRecipes.map(r => [r.id, r]));
+
+        // Combine all saved recipes with their data
+        const combinedSavedRecipes = savedData.map(saved => {
+          let recipeData = null;
+          let source = null;
+
+          if (saved.user_recipe_id) {
+            recipeData = userRecipeMap.get(saved.user_recipe_id);
+            source = 'user_recipes';
+          } else if (saved.recipe_id) {
+            recipeData = publicRecipeMap.get(saved.recipe_id);
+            source = 'recipes';
+          }
+
+          return {
+            id: saved.id,
+            recipe_id: saved.recipe_id,
+            user_recipe_id: saved.user_recipe_id,
+            saved_at: saved.saved_at,
+            source: source,
+            recipe: recipeData
+          };
+        }).filter(item => item.recipe); // Filter out deleted recipes
+
+        setSavedRecipes(combinedSavedRecipes);
         
       } catch (err) {
         console.error('Error loading saved recipes:', err);
@@ -83,18 +146,18 @@ function SavedRecipes() {
     loadUserAndSavedRecipes();
   }, [navigate]);
 
-  const handleUnsaveRecipe = async (savedRecipeId, recipeTitle) => {
+  const handleUnsaveRecipe = async (savedItemId, recipeTitle) => {
     if (!window.confirm(`Remove "${recipeTitle}" from your saved recipes?`)) {
       return;
     }
 
     try {
-      setUnsaveLoading(savedRecipeId);
+      setUnsaveLoading(savedItemId);
       
       const { error: deleteError } = await supabase
         .from('saved_recipes')
         .delete()
-        .eq('id', savedRecipeId)
+        .eq('id', savedItemId)
         .eq('user_id', user.id);
 
       if (deleteError) {
@@ -102,7 +165,7 @@ function SavedRecipes() {
       }
 
       // Update local state to remove the unsaved recipe
-      setSavedRecipes(prevRecipes => prevRecipes.filter(saved => saved.id !== savedRecipeId));
+      setSavedRecipes(prevRecipes => prevRecipes.filter(saved => saved.id !== savedItemId));
       
     } catch (err) {
       console.error('Error removing saved recipe:', err);
@@ -112,12 +175,19 @@ function SavedRecipes() {
     }
   };
 
-  const handleViewRecipe = (recipe) => {
-    const recipeOwnerUsername = getUsernameForUrl(
-      { id: recipe.user_id },
-      recipe.profiles
-    );
-    navigate(generateRecipeUrl(recipeOwnerUsername, recipe));
+  const handleViewRecipe = (recipe, isUserRecipe) => {
+    if (isUserRecipe) {
+      // Navigate to user recipe detail page
+      const recipeOwnerUsername = getUsernameForUrl(
+        { id: recipe.user_id },
+        recipe.profiles
+      );
+      navigate(generateRecipeUrl(recipeOwnerUsername, recipe));
+    } else {
+      // Navigate to public recipe detail page (you may need to implement this route)
+      // For now, we'll use the same navigation
+      navigate(`/recipes/${recipe.id}`);
+    }
   };
 
   if (loading) {
@@ -126,7 +196,7 @@ function SavedRecipes() {
         <Navigation />
         <div className="saved-recipes-page">
           <div className="saved-recipes-container">
-            <div className="loading-spinner">
+            <div className="loading-state">
               <div className="spinner"></div>
               <p>Loading your saved recipes...</p>
             </div>
@@ -152,6 +222,13 @@ function SavedRecipes() {
     );
   }
 
+  // Filter recipes by category
+  const filteredRecipes = selectedCategory === 'All' 
+    ? savedRecipes 
+    : savedRecipes.filter(savedItem => 
+        savedItem.recipe?.category?.toLowerCase() === selectedCategory.toLowerCase()
+      );
+
   return (
     <>
       <Navigation />
@@ -159,14 +236,21 @@ function SavedRecipes() {
         <div className="saved-recipes-container">
           <div className="page-header">
             <div className="header-content">
-              <h2 className="page-title">Saved Recipes</h2>
-              <p className="page-subtitle">
-                {savedRecipes.length === 0 
-                  ? "You haven't saved any recipes yet" 
-                  : `${savedRecipes.length} saved recipe${savedRecipes.length === 1 ? '' : 's'}`
-                }
-              </p>
+              <h1 className="page-title">Saved Recipes</h1>
+              <p className="page-subtitle">Your personal collection of culinary inspiration.</p>
             </div>
+          </div>
+
+          <div className="category-filters">
+            {categories.map((category) => (
+              <button
+                key={category}
+                className={`category-btn ${selectedCategory === category ? 'active' : ''}`}
+                onClick={() => setSelectedCategory(category)}
+              >
+                {category}
+              </button>
+            ))}
           </div>
 
           {error && (
@@ -177,7 +261,7 @@ function SavedRecipes() {
 
           {savedRecipes.length === 0 ? (
             <div className="empty-state">
-              <div className="empty-icon">❤️</div>
+              <div className="empty-icon">🍳</div>
               <h3>No saved recipes yet</h3>
               <p>Save recipes you love to find them easily later!</p>
               <button 
@@ -187,65 +271,55 @@ function SavedRecipes() {
                 Browse Recipes
               </button>
             </div>
+          ) : filteredRecipes.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon">🔍</div>
+              <h3>No {selectedCategory.toLowerCase()} recipes saved</h3>
+              <p>Try selecting a different category or save more recipes!</p>
+            </div>
           ) : (
             <div className="recipes-grid">
-              {savedRecipes.map((savedItem) => {
-                const recipe = savedItem.user_recipes;
-                const recipeOwner = recipe.profiles;
+              {filteredRecipes.map((savedItem) => {
+                const recipe = savedItem.recipe;
+                const isUserRecipe = savedItem.source === 'user_recipes';
                 
                 return (
-                  <div key={savedItem.id} className="recipe-card">
-                    {recipe.image_url && (
+                  <div key={savedItem.id} className="recipe-card" onClick={() => handleViewRecipe(recipe, isUserRecipe)}>
+                    <div className="recipe-image-container">
                       <div className="recipe-image">
-                        <img 
-                          src={recipe.image_url} 
-                          alt={recipe.title}
-                          onError={(e) => {
-                            e.target.style.display = 'none';
-                          }}
-                        />
+                        {recipe.image_url ? (
+                          <img 
+                            src={recipe.image_url} 
+                            alt={recipe.title}
+                            onError={(e) => {
+                              e.target.src = '/api/placeholder/300/200';
+                            }}
+                          />
+                        ) : (
+                          <div className="placeholder-image">
+                            <span>🍳</span>
+                          </div>
+                        )}
                       </div>
-                    )}
+                      <button 
+                        className="bookmark-btn saved"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleUnsaveRecipe(savedItem.id, recipe.title);
+                        }}
+                        disabled={unsaveLoading === savedItem.id}
+                        title="Remove from saved"
+                      >
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+                        </svg>
+                      </button>
+                    </div>
                     
-                    <div className="recipe-content">
+                    <div className="recipe-info">
                       <h3 className="recipe-title">{recipe.title}</h3>
-                      <p className="recipe-category">{recipe.category}</p>
-                      
                       <div className="recipe-author">
-                        <span className="author-label">by</span>
-                        <span className="author-name">
-                          {recipeOwner?.full_name || recipeOwner?.username || 'Anonymous'}
-                        </span>
-                      </div>
-                      
-                      <div className="recipe-meta">
-                        <div className="recipe-stats">
-                          <span className="stat">
-                            🥄 {recipe.ingredients?.length || 0} ingredients
-                          </span>
-                          <span className="stat">
-                            📋 {recipe.steps?.length || 0} steps
-                          </span>
-                        </div>
-                        <p className="recipe-date">
-                          Saved {new Date(savedItem.created_at).toLocaleDateString()}
-                        </p>
-                      </div>
-
-                      <div className="recipe-actions">
-                        <button 
-                          className="action-btn view-btn"
-                          onClick={() => handleViewRecipe(recipe)}
-                        >
-                          View Recipe
-                        </button>
-                        <button 
-                          className="action-btn unsave-btn"
-                          onClick={() => handleUnsaveRecipe(savedItem.id, recipe.title)}
-                          disabled={unsaveLoading === savedItem.id}
-                        >
-                          {unsaveLoading === savedItem.id ? 'Removing...' : '💔 Unsave'}
-                        </button>
+                       
                       </div>
                     </div>
                   </div>

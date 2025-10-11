@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import Navigation from '../components/Navigation';
-import { generateRecipeUrl, generateCreateRecipeUrl, getUsernameForUrl } from '../utils/urlUtils';
+import { generateRecipeUrl, generateCreateRecipeUrl, generateEditRecipeUrl, getUsernameForUrl } from '../utils/urlUtils';
 import './MyRecipes.css';
 
 function MyRecipes() {
@@ -15,6 +15,17 @@ function MyRecipes() {
   
   const navigate = useNavigate();
   const { username } = useParams();
+
+  // Helper: Generate subtitle for recipes
+  const getRecipeSubtitle = (recipe) => {
+    const title = (recipe?.title || '').toLowerCase();
+    if (title.includes('pasta')) return 'A rich and flavorful pasta dish.';
+    if (title.includes('salad')) return 'A refreshing and healthy salad.';
+    if (title.includes('cake') || title.includes('chocolate')) return 'A decadent chocolate dessert.';
+    if (title.includes('chili') || title.includes('vegan')) return 'Hearty and packed with flavor.';
+    if (recipe?.category) return `A delicious ${recipe.category.toLowerCase()} recipe.`;
+    return 'Your delicious homemade recipe.';
+  };
 
   useEffect(() => {
     async function loadUserAndRecipes() {
@@ -81,33 +92,39 @@ function MyRecipes() {
     loadUserAndRecipes();
   }, [navigate, username]);
 
-  const handleDeleteRecipe = async (recipeId, recipeTitle) => {
-    if (!window.confirm(`Are you sure you want to delete "${recipeTitle}"?`)) {
-      return;
-    }
 
-    try {
-      setDeleteLoading(recipeId);
-      
-      const { error: deleteError } = await supabase
-        .from('user_recipes')
-        .delete()
-        .eq('id', recipeId)
-        .eq('user_id', user.id); // Ensure user can only delete their own recipes
-
-      if (deleteError) {
-        throw deleteError;
+  const handleDeleteRecipe = (recipeId, recipeTitle) => {
+    // Show app install prompt instead of deleting
+    const message = `To delete "${recipeTitle}", please install our app for the full experience!\n\nWould you like to install the app now?`;
+    
+    if (window.confirm(message)) {
+      // Trigger app install prompt
+      if ('serviceWorker' in navigator && 'BeforeInstallPromptEvent' in window) {
+        // Check if there's a deferred install prompt
+        if (window.deferredPrompt) {
+          window.deferredPrompt.prompt();
+          window.deferredPrompt.userChoice.then((choiceResult) => {
+            if (choiceResult.outcome === 'accepted') {
+              console.log('User accepted the install prompt');
+            } else {
+              console.log('User dismissed the install prompt');
+            }
+            window.deferredPrompt = null;
+          });
+        } else {
+          // Fallback: Show instructions for manual installation
+          alert('To install the app:\n\n• On Chrome: Click the install icon in the address bar\n• On Safari: Tap the share button and select "Add to Home Screen"\n• On other browsers: Look for "Install App" or "Add to Home Screen" option');
+        }
+      } else {
+        // Fallback for browsers that don't support PWA installation
+        alert('Your browser doesn\'t support app installation. Please try using Chrome, Safari, or another modern browser.');
       }
-
-      // Update local state to remove the deleted recipe
-      setRecipes(prevRecipes => prevRecipes.filter(recipe => recipe.id !== recipeId));
-      
-    } catch (err) {
-      console.error('Error deleting recipe:', err);
-      alert(`Failed to delete recipe: ${err.message}`);
-    } finally {
-      setDeleteLoading(null);
     }
+  };
+
+  const handleEditRecipe = (recipe) => {
+    const username = getUsernameForUrl(user, profile);
+    navigate(generateEditRecipeUrl(username, recipe.id));
   };
 
   const handleViewRecipe = (recipe) => {
@@ -126,7 +143,7 @@ function MyRecipes() {
         <Navigation />
         <div className="my-recipes-page">
           <div className="my-recipes-container">
-            <div className="loading-spinner">
+            <div className="loading-state">
               <div className="spinner"></div>
               <p>Loading your recipes...</p>
             </div>
@@ -158,20 +175,12 @@ function MyRecipes() {
       <div className="my-recipes-page">
         <div className="my-recipes-container">
           <div className="page-header">
-            <div className="header-content">
-              <h2 className="page-title">My Recipes</h2>
-              <p className="page-subtitle">
-                {recipes.length === 0 
-                  ? "You haven't created any recipes yet" 
-                  : `${recipes.length} recipe${recipes.length === 1 ? '' : 's'}`
-                }
-              </p>
-            </div>
+            <h1 className="page-title">My Recipes</h1>
             <button 
-              className="create-btn"
+              className="add-recipe-btn"
               onClick={handleCreateRecipe}
             >
-              + Create Recipe
+              + Add Recipe
             </button>
           </div>
 
@@ -187,65 +196,78 @@ function MyRecipes() {
               <h3>No recipes yet</h3>
               <p>Create your first recipe to get started!</p>
               <button 
-                className="create-btn create-btn-large"
+                className="add-recipe-btn add-recipe-btn-large"
                 onClick={handleCreateRecipe}
               >
                 Create Your First Recipe
               </button>
             </div>
           ) : (
-            <div className="recipes-grid">
-              {recipes.map((recipe) => (
-                <div key={recipe.id} className="recipe-card">
-                  {recipe.image_url && (
-                    <div className="recipe-image">
-                      <img 
-                        src={recipe.image_url} 
-                        alt={recipe.title}
-                        onError={(e) => {
-                          e.target.style.display = 'none';
-                        }}
-                      />
+            <>
+              <div className="my-recipes-grid">
+                {recipes.map((recipe) => (
+                  <div 
+                    key={recipe.id} 
+                    className="my-recipe-card"
+                    onClick={() => handleViewRecipe(recipe)}
+                  >
+                    <div className="my-recipe-image-wrap">
+                      {recipe.image_url ? (
+                        <img 
+                          src={recipe.image_url} 
+                          alt={recipe.title}
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="placeholder-image">
+                          <span>🍳</span>
+                        </div>
+                      )}
                     </div>
-                  )}
-                  
-                  <div className="recipe-content">
-                    <h3 className="recipe-title">{recipe.title}</h3>
-                    <p className="recipe-category">{recipe.category}</p>
                     
-                    <div className="recipe-meta">
-                      <div className="recipe-stats">
-                        <span className="stat">
-                          🥄 {recipe.ingredients?.length || 0} ingredients
-                        </span>
-                        <span className="stat">
-                          📋 {recipe.steps?.length || 0} steps
-                        </span>
-                      </div>
-                      <p className="recipe-date">
-                        Created {new Date(recipe.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
+                    <h3 className="my-recipe-card-title">{recipe.title}</h3>
+                    <p className="my-recipe-card-subtitle">{getRecipeSubtitle(recipe)}</p>
 
                     <div className="recipe-actions">
                       <button 
-                        className="action-btn view-btn"
-                        onClick={() => handleViewRecipe(recipe)}
+                        className="edit-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEditRecipe(recipe);
+                        }}
+                        title="Edit recipe"
                       >
-                        View Recipe
+                        ✏️
                       </button>
                       <button 
-                        className="action-btn delete-btn"
-                        onClick={() => handleDeleteRecipe(recipe.id, recipe.title)}
+                        className="delete-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteRecipe(recipe.id, recipe.title);
+                        }}
                         disabled={deleteLoading === recipe.id}
+                        title="Delete recipe"
                       >
-                        {deleteLoading === recipe.id ? 'Deleting...' : 'Delete'}
+                        {deleteLoading === recipe.id ? '⏳' : '🗑️'}
                       </button>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+
+              {/* Pagination */}
+              <div className="pagination">
+                <button className="pagination-btn prev" disabled>
+                  &lt;
+                </button>
+                <button className="pagination-btn active">1</button>
+                <button className="pagination-btn">2</button>
+                <button className="pagination-btn">3</button>
+                <button className="pagination-btn next">
+                  &gt;
+                </button>
+              </div>
+            </>
           )}
         </div>
       </div>

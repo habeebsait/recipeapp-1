@@ -23,6 +23,17 @@ function Profile() {
   
   const navigate = useNavigate();
 
+  // Helper: Generate subtitle for recipes (matching HomePage)
+  const getRecipeSubtitle = (recipe) => {
+    const title = (recipe?.title || '').toLowerCase();
+    if (title.includes('pasta')) return 'A rich and flavorful pasta dish.';
+    if (title.includes('salad')) return 'A refreshing and healthy salad.';
+    if (title.includes('cake') || title.includes('chocolate')) return 'A decadent chocolate dessert.';
+    if (title.includes('chili') || title.includes('vegan')) return 'Hearty and packed with flavor.';
+    if (recipe?.category) return `A delicious ${recipe.category.toLowerCase()} recipe.`;
+    return 'Your delicious homemade recipe.';
+  };
+
   useEffect(() => {
     async function loadUserProfileAndRecipes() {
       try {
@@ -164,7 +175,7 @@ function Profile() {
         <Navigation />
         <div className="profile-page">
           <div className="profile-container">
-            <div className="loading-spinner">
+            <div className="loading-state">
               <div className="spinner"></div>
               <p>Loading your profile...</p>
             </div>
@@ -241,16 +252,6 @@ function Profile() {
                 </div>
 
                 <div className="profile-field">
-                  <label>Avatar URL :</label>
-                  <input
-                    type="url"
-                    value={avatarUrl}
-                    onChange={(e) => setAvatarUrl(e.target.value)}
-                    placeholder="Enter avatar image URL"
-                  />
-                </div>
-
-                <div className="profile-field">
                   <label>Mail :</label>
                   <input
                     type="email"
@@ -300,14 +301,28 @@ function Profile() {
                   </button>
                 </div>
               ) : (
-                <div className="recipes-grid">
+                <div className="profile-recipes-grid">
                   {recipes.map((recipe) => (
                     <div 
                       key={recipe.id} 
-                      className="recipe-card"
+                      className="profile-recipe-card"
                       onClick={() => handleViewRecipe(recipe)}
                     >
-                      <h4 className="recipe-card-title">{recipe.title}</h4>
+                      <div className="profile-recipe-image-wrap">
+                        {recipe.image_url ? (
+                          <img 
+                            src={recipe.image_url} 
+                            alt={recipe.title}
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="placeholder-image">
+                            <span>🍳</span>
+                          </div>
+                        )}
+                      </div>
+                      <h3 className="profile-recipe-card-title">{recipe.title}</h3>
+                      <p className="profile-recipe-card-subtitle">{getRecipeSubtitle(recipe)}</p>
                     </div>
                   ))}
                 </div>

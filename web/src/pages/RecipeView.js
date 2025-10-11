@@ -5,9 +5,12 @@ import Navigation from '../components/Navigation';
 import './RecipeView.css';
 
 function RecipeView() {
+  const [user, setUser] = useState(null);
   const [recipe, setRecipe] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isSaved, setIsSaved] = useState(false);
+  const [saveLoading, setSaveLoading] = useState(false);
   
   const { id } = useParams();
   const navigate = useNavigate();
@@ -15,6 +18,10 @@ function RecipeView() {
   useEffect(() => {
     async function loadRecipe() {
       try {
+        // Check authentication
+        const { data: { user: currentUser } } = await supabase.auth.getUser();
+        setUser(currentUser);
+
         const { data: recipeData, error: recipeError } = await supabase
           .from('recipes')
           .select('*')
@@ -33,6 +40,20 @@ function RecipeView() {
         }
 
         setRecipe(recipeData);
+
+        // Check if recipe is saved by current user
+        if (currentUser) {
+          const { data: savedData, error: savedError } = await supabase
+            .from('saved_recipes')
+            .select('id')
+            .eq('user_id', currentUser.id)
+            .eq('recipe_id', recipeData.id)
+            .maybeSingle();
+
+          if (savedData && !savedError) {
+            setIsSaved(true);
+          }
+        }
         
       } catch (err) {
         console.error('Error loading recipe:', err);
@@ -47,13 +68,55 @@ function RecipeView() {
     }
   }, [id]);
 
+  const handleSaveRecipe = async () => {
+    if (!user) {
+      alert('Please sign in to save recipes');
+      return;
+    }
+
+    if (!recipe) return;
+
+    try {
+      setSaveLoading(true);
+
+      if (isSaved) {
+        // Remove from saved recipes
+        const { error } = await supabase
+          .from('saved_recipes')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('recipe_id', recipe.id);
+
+        if (error) throw error;
+        setIsSaved(false);
+      } else {
+        // Add to saved recipes
+        const { error } = await supabase
+          .from('saved_recipes')
+          .insert([{
+            user_id: user.id,
+            recipe_id: recipe.id,
+            category: recipe.category
+          }]);
+
+        if (error) throw error;
+        setIsSaved(true);
+      }
+    } catch (err) {
+      console.error('Error saving recipe:', err);
+      alert(`Failed to ${isSaved ? 'remove' : 'save'} recipe: ${err.message}`);
+    } finally {
+      setSaveLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <>
         <Navigation />
         <div className="recipe-view-page">
           <div className="recipe-view-container">
-            <div className="loading-spinner">
+            <div className="loading-state">
               <div className="spinner"></div>
               <p>Loading recipe...</p>
             </div>
@@ -120,6 +183,21 @@ function RecipeView() {
                 </span>
               </div>
             </div>
+
+            {user && (
+              <div className="recipe-actions">
+                <button
+                  className={`recipe-btn ${isSaved ? 'recipe-btn-secondary' : 'recipe-btn-primary'}`}
+                  onClick={handleSaveRecipe}
+                  disabled={saveLoading}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill={isSaved ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
+                    <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+                  </svg>
+                  {saveLoading ? 'Processing...' : (isSaved ? 'Saved' : 'Save Recipe')}
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="recipe-content">

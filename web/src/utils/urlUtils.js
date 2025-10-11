@@ -127,6 +127,17 @@ export const generateRecipeUrl = (username, recipeOrTitle, timestamp) => {
 };
 
 /**
+ * Generates edit recipe URL
+ * @param {string} username - Recipe owner's username  
+ * @param {string} recipeId - Recipe ID
+ * @returns {string} - Edit recipe URL like "/johndoe/edit-recipe/recipe-id"
+ */
+export const generateEditRecipeUrl = (username, recipeId) => {
+  if (!username || !recipeId) return '#';
+  return `/${username}/edit-recipe/${recipeId}`;
+};
+
+/**
  * Validates if a string is a valid username format
  * @param {string} username - Username to validate
  * @returns {boolean} - True if valid username format

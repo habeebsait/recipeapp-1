@@ -26,6 +26,7 @@
 | saved_recipes   | saved_at          | timestamp with time zone |
 | saved_recipes   | notes             | text                     |
 | saved_recipes   | category          | text                     |
+| saved_recipes   | user_recipe_id    | uuid                     |
 | user_recipes    | id                | uuid                     |
 | user_recipes    | user_id           | uuid                     |
 | user_recipes    | title             | text                     |

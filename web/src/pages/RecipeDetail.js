@@ -99,10 +99,10 @@ function RecipeDetail() {
             .from('saved_recipes')
             .select('id')
             .eq('user_id', currentUser.id)
-            .eq('recipe_id', recipeId)
-            .single();
+            .eq('user_recipe_id', recipeData.id)
+            .maybeSingle();
 
-          if (!savedError) {
+          if (savedData && !savedError) {
             setIsSaved(true);
           }
         }
@@ -135,7 +135,7 @@ function RecipeDetail() {
           .from('saved_recipes')
           .delete()
           .eq('user_id', user.id)
-          .eq('recipe_id', recipe.id);
+          .eq('user_recipe_id', recipe.id);
 
         if (error) throw error;
         setIsSaved(false);
@@ -145,7 +145,8 @@ function RecipeDetail() {
           .from('saved_recipes')
           .insert([{
             user_id: user.id,
-            recipe_id: recipe.id
+            user_recipe_id: recipe.id,
+            category: recipe.category
           }]);
 
         if (error) throw error;
@@ -167,7 +168,7 @@ function RecipeDetail() {
         <Navigation />
         <div className="recipe-detail-page">
           <div className="recipe-detail-container">
-            <div className="loading-spinner">
+            <div className="loading-state">
               <div className="spinner"></div>
               <p>Loading recipe...</p>
             </div>
@@ -204,113 +205,82 @@ function RecipeDetail() {
       <Navigation />
       <div className="recipe-detail-page">
         <div className="recipe-detail-container">
-          <div className="recipe-header">
-            <div className="breadcrumb">
-              <button 
-                className="breadcrumb-link"
-                onClick={() => navigate('/')}
-              >
-                Home
-              </button>
-              <span className="breadcrumb-separator">→</span>
-              <button 
-                className="breadcrumb-link"
-                onClick={() => {
-                  const ownerUsername = getUsernameForUrl(
-                    { id: recipe.user_id }, 
-                    recipeOwnerProfile
-                  );
-                  navigate(generateMyRecipesUrl(ownerUsername));
-                }}
-              >
-                {recipeOwnerProfile?.full_name || recipeOwnerProfile?.username || 'User'}'s Recipes
-              </button>
-              <span className="breadcrumb-separator">→</span>
-              <span className="breadcrumb-current">{recipe.title}</span>
+          {/* Hero Image Section */}
+          {recipe.image_url && (
+            <div className="recipe-hero">
+              <img 
+                src={recipe.image_url} 
+                alt={recipe.title}
+                className="recipe-hero-image"
+              />
             </div>
+          )}
 
+          {/* Recipe Header */}
+          <div className="recipe-header">
             <div className="recipe-title-section">
               <h1 className="recipe-title">{recipe.title}</h1>
-              <div className="recipe-meta">
-                <span className="recipe-category">{recipe.category}</span>
-                <span className="recipe-date">
-                  Created {new Date(recipe.created_at).toLocaleDateString()}
-                </span>
-                <span className="recipe-author">
-                  by {recipeOwnerProfile?.full_name || recipeOwnerProfile?.username || 'Anonymous'}
-                </span>
-              </div>
+              <p className="recipe-author">
+                By {recipeOwnerProfile?.full_name || recipeOwnerProfile?.username || 'Chef Anonymous'}
+              </p>
             </div>
 
             <div className="recipe-actions">
-              {!isOwner && user && (
+              {user && (
                 <button 
-                  className={`recipe-btn ${isSaved ? 'recipe-btn-secondary' : 'recipe-btn-primary'}`}
+                  className={`action-btn save-btn ${isSaved ? 'saved' : ''}`}
                   onClick={handleSaveRecipe}
                   disabled={saveLoading}
                 >
-                  {saveLoading ? 'Loading...' : (isSaved ? '❤️ Saved' : '🤍 Save Recipe')}
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill={isSaved ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
+                    <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+                  </svg>
+                  {saveLoading ? 'Saving...' : (isSaved ? 'Saved' : 'Save')}
                 </button>
               )}
-              {isOwner && (
-                <button 
-                  className="recipe-btn recipe-btn-secondary"
-                  onClick={() => {
-                    const userUsername = getUsernameForUrl(user, profile);
-                    navigate(generateMyRecipesUrl(userUsername));
-                  }}
-                >
-                  Edit My Recipes
-                </button>
-              )}
+
+              <button className="action-btn share-btn">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.50-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92S21 19.61 21 18s-1.31-2.92-2.92-2.92z"/>
+                </svg>
+                Share
+              </button>
             </div>
           </div>
 
+          {/* Recipe Content */}
           <div className="recipe-content">
-            {recipe.image_url && (
-              <div className="recipe-image-section">
-                <img 
-                  src={recipe.image_url} 
-                  alt={recipe.title}
-                  className="recipe-image"
-                />
-              </div>
-            )}
-
             <div className="recipe-sections">
               <div className="ingredients-section">
-                <h2>Ingredients</h2>
-                <div className="ingredients-list">
+                <h2 className="section-title">Ingredients</h2>
+                <ul className="ingredients-list">
                   {recipe.ingredients && recipe.ingredients.length > 0 ? (
-                    <ul>
-                      {recipe.ingredients.map((ingredient, index) => (
-                        <li key={index} className="ingredient-item">
-                          <span className="ingredient-text">{ingredient}</span>
-                        </li>
-                      ))}
-                    </ul>
+                    recipe.ingredients.map((ingredient, index) => (
+                      <li key={index} className="ingredient-item">
+                        <span className="ingredient-bullet">•</span>
+                        <span className="ingredient-text">{ingredient}</span>
+                      </li>
+                    ))
                   ) : (
-                    <p className="empty-message">No ingredients listed</p>
+                    <li className="empty-message">No ingredients listed</li>
                   )}
-                </div>
+                </ul>
               </div>
 
-              <div className="steps-section">
-                <h2>Instructions</h2>
-                <div className="steps-list">
+              <div className="instructions-section">
+                <h2 className="section-title">Instructions</h2>
+                <ol className="instructions-list">
                   {recipe.steps && recipe.steps.length > 0 ? (
-                    <ol>
-                      {recipe.steps.map((step, index) => (
-                        <li key={index} className="step-item">
-                          <div className="step-number">{index + 1}</div>
-                          <div className="step-content">{step}</div>
-                        </li>
-                      ))}
-                    </ol>
+                    recipe.steps.map((step, index) => (
+                      <li key={index} className="instruction-item">
+                        <span className="instruction-number">{index + 1}.</span>
+                        <span className="instruction-text">{step}</span>
+                      </li>
+                    ))
                   ) : (
-                    <p className="empty-message">No instructions provided</p>
+                    <li className="empty-message">No instructions provided</li>
                   )}
-                </div>
+                </ol>
               </div>
             </div>
           </div>

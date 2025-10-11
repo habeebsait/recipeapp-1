@@ -10,7 +10,12 @@ function Navigation() {
   const [userProfile, setUserProfile] = useState(null);
   const [showAuth, setShowAuth] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
   const menuRef = useRef(null);
+  const searchRef = useRef(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -44,18 +49,21 @@ function Navigation() {
     };
   }, []);
 
-  // Close menu on outside click
+  // Close menu and search results on outside click
   useEffect(() => {
     function handleClickOutside(e) {
       if (menuRef.current && !menuRef.current.contains(e.target)) {
         setMenuOpen(false);
       }
+      if (searchRef.current && !searchRef.current.contains(e.target)) {
+        setShowSearchResults(false);
+      }
     }
-    if (menuOpen) {
+    if (menuOpen || showSearchResults) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [menuOpen]);
+  }, [menuOpen, showSearchResults]);
 
   const fetchUserProfile = async (userId) => {
     try {
@@ -99,6 +107,74 @@ function Navigation() {
     return name.substring(0, 2).toUpperCase();
   };
 
+  const handleSearch = async (query) => {
+    if (!query.trim()) {
+      setSearchResults([]);
+      setShowSearchResults(false);
+      return;
+    }
+
+    setSearchLoading(true);
+    setShowSearchResults(true);
+
+    try {
+      // Search for users by username or full name
+      // Handle both boolean and string values for is_public_profile
+      const { data: users, error } = await supabase
+        .from('profiles')
+        .select('id, username, full_name, avatar_url, is_public_profile')
+        .in('is_public_profile', [true, 'true'])
+        .or(`username.ilike.%${query}%,full_name.ilike.%${query}%`)
+        .limit(10);
+
+      if (error) {
+        console.error('Error searching users:', error);
+        setSearchResults([]);
+        return;
+      }
+
+      setSearchResults(users || []);
+    } catch (error) {
+      console.error('Error searching users:', error);
+      setSearchResults([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  const handleSearchInputChange = (e) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+  };
+
+  // Debounced search effect
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (searchQuery) {
+        handleSearch(searchQuery);
+      } else {
+        setSearchResults([]);
+        setShowSearchResults(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery]); // handleSearch is defined above and uses supabase which is stable
+
+  const handleUserSelect = (selectedUser) => {
+    const username = getUsernameForUrl({ id: selectedUser.id }, selectedUser);
+    navigate(`/user/${username}`);
+    setShowSearchResults(false);
+    setSearchQuery('');
+  };
+
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    if (searchResults.length > 0) {
+      handleUserSelect(searchResults[0]);
+    }
+  };
+
   return (
     <>
       <nav className="navigation">
@@ -109,6 +185,70 @@ function Navigation() {
           </div>
 
           <div className="nav-menu">
+            <div className="search-container" ref={searchRef}>
+              <form onSubmit={handleSearchSubmit} className="search-form">
+                <div className="search-input-wrapper">
+                  <svg className="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <path d="m21 21-4.35-4.35"></path>
+                  </svg>
+                  <input
+                    type="text"
+                    placeholder="Search users..."
+                    value={searchQuery}
+                    onChange={handleSearchInputChange}
+                    onFocus={() => searchQuery && setShowSearchResults(true)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') {
+                        setShowSearchResults(false);
+                        setSearchQuery('');
+                      }
+                    }}
+                    className="search-input"
+                  />
+                </div>
+              </form>
+              
+              {showSearchResults && (
+                <div className="search-results">
+                  {searchLoading ? (
+                    <div className="search-loading">
+                      <div className="spinner-small"></div>
+                      <span>Searching...</span>
+                    </div>
+                  ) : searchResults.length > 0 ? (
+                    <ul className="search-results-list">
+                      {searchResults.map((user) => (
+                        <li 
+                          key={user.id} 
+                          className="search-result-item"
+                          onClick={() => handleUserSelect(user)}
+                        >
+                          <div className="search-user-avatar">
+                            {user.avatar_url ? (
+                              <img src={user.avatar_url} alt={user.full_name || user.username} />
+                            ) : (
+                              <span>{(user.full_name || user.username || 'U').charAt(0).toUpperCase()}</span>
+                            )}
+                          </div>
+                          <div className="search-user-info">
+                            <div className="search-user-name">{user.full_name || user.username}</div>
+                            {user.full_name && user.username && (
+                              <div className="search-user-username">@{user.username}</div>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : searchQuery ? (
+                    <div className="search-no-results">
+                      <span>No users found</span>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
+
             {user ? (
               <div className="user-menu" ref={menuRef}>
                 <button
@@ -130,6 +270,14 @@ function Navigation() {
 
                 {menuOpen && (
                   <div className="dropdown-menu" role="menu">
+                    <button
+                      className="dropdown-item"
+                      onClick={() => { navigate('/'); setMenuOpen(false); }}
+                      role="menuitem"
+                    >
+                      Home
+                    </button>
+                    <hr className="dropdown-divider" />
                     <button
                       className="dropdown-item"
                       onClick={() => { navigate('/profile'); setMenuOpen(false); }}
